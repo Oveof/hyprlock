@@ -129,6 +129,10 @@ void CFingerprint::terminate() {
         releaseDevice();
 }
 
+void CFingerprint::restart() {
+    ;
+}
+
 bool CFingerprint::createDeviceProxy() {
     auto              proxy = sdbus::createProxy(*g_dbus->m_connection, FPRINT, sdbus::ObjectPath{"/net/reactivated/Fprint/Manager"});
 

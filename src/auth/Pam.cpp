@@ -49,8 +49,8 @@ int conv(int num_msg, const struct pam_message** msg, struct pam_response** resp
                     CONVERSATIONSTATE->waitForInput();
                 }
 
-                // Needed for unlocks via SIGUSR1
-                if (CONVERSATIONSTATE->terminateRequested || g_pHyprlock->isFadingOutOrTerminating())
+                // Needed for unlocks via SIGUSR1 and auth restarts via SIGRTMIN+1
+                if (CONVERSATIONSTATE->terminateRequested || CONVERSATIONSTATE->restartRequested || g_pHyprlock->isFadingOutOrTerminating())
                     return abortConversation();
 
                 pamReply[i].resp = strdup(CONVERSATIONSTATE->input.c_str());
@@ -109,12 +109,18 @@ void CPam::init() {
             if (m_sConversationState.terminateRequested || g_pHyprlock->isFadingOutOrTerminating())
                 return;
 
-            if (!AUTHENTICATED)
-                g_pAuth->enqueueFail(m_sConversationState.failText, AUTH_IMPL_PAM);
-            else {
+            if (AUTHENTICATED) {
                 g_pAuth->enqueueUnlock();
                 return;
             }
+
+            // Aborted on purpose, start over without reporting a failure
+            if (m_sConversationState.restartRequested) {
+                Log::logger->log(Log::INFO, "auth: restarting PAM conversation for {}", m_sPamModule);
+                continue;
+            }
+
+            g_pAuth->enqueueFail(m_sConversationState.failText, AUTH_IMPL_PAM);
         }
     });
 }
@@ -142,6 +148,10 @@ bool CPam::auth() {
 
     m_sConversationState.waitingForPamAuth = false;
 
+    // Keep the previous fail text ($PAMFAIL) when the attempt was aborted for a restart
+    if (ret != PAM_SUCCESS && m_sConversationState.restartRequested)
+        return false;
+
     if (ret != PAM_SUCCESS) {
         if (!m_sConversationState.failTextFromPam)
             m_sConversationState.failText = ret == PAM_AUTH_ERR ? "Authentication failed" : "pam_authenticate failed";
@@ -160,8 +170,9 @@ void CPam::waitForInput() {
     m_bBlockInput                          = false;
     m_sConversationState.waitingForPamAuth = false;
     m_sConversationState.inputRequested    = true;
-    m_sConversationState.inputSubmittedCondition.wait(
-        lk, [this] { return !m_sConversationState.inputRequested || m_sConversationState.terminateRequested || g_pHyprlock->isFadingOutOrTerminating(); });
+    m_sConversationState.inputSubmittedCondition.wait(lk, [this] {
+        return !m_sConversationState.inputRequested || m_sConversationState.terminateRequested || m_sConversationState.restartRequested || g_pHyprlock->isFadingOutOrTerminating();
+    });
     m_bBlockInput = true;
 }
 
@@ -200,10 +211,27 @@ void CPam::terminate() {
         m_thread.join();
 }
 
+void CPam::restart() {
+    {
+        std::lock_guard<std::mutex> lg(m_sConversationState.inputMutex);
+        // We can only abort while PAM waits for an answer to one of our prompts.
+        // Modules that block elsewhere (e.g. waiting for a device) don't go through the conversation.
+        if (!m_sConversationState.inputRequested) {
+            Log::logger->log(Log::WARN, "auth: PAM restart requested, but PAM is not waiting for input. Ignoring.");
+            return;
+        }
+
+        m_sConversationState.restartRequested = true;
+    }
+
+    m_sConversationState.inputSubmittedCondition.notify_all();
+}
+
 void CPam::resetConversation() {
     m_sConversationState.input             = "";
     m_sConversationState.waitingForPamAuth = false;
     m_sConversationState.inputRequested    = false;
     m_sConversationState.failTextFromPam   = false;
+    m_sConversationState.restartRequested  = false;
     m_bBlockInput                          = false;
 }

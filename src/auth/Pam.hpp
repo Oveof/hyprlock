@@ -24,6 +24,7 @@ class CPam : public IAuthImplementation {
         bool                    inputRequested     = false;
         bool                    failTextFromPam    = false;
         std::atomic_bool        terminateRequested = false;
+        std::atomic_bool        restartRequested   = false;
         std::function<void()>   waitForInput       = []() {};
     };
 
@@ -41,6 +42,7 @@ class CPam : public IAuthImplementation {
     virtual std::optional<std::string> getLastFailText();
     virtual std::optional<std::string> getLastPrompt();
     virtual void                       terminate();
+    virtual void                       restart();
 
   private:
     std::thread           m_thread;

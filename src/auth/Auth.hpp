@@ -22,6 +22,7 @@ class IAuthImplementation {
     virtual std::optional<std::string> getLastFailText()                     = 0;
     virtual std::optional<std::string> getLastPrompt()                       = 0;
     virtual void                       terminate()                           = 0;
+    virtual void                       restart()                             = 0;
 
     friend class CAuth;
 };
@@ -42,8 +43,10 @@ class CAuth {
     size_t                     getFailedAttempts();
 
     void                       terminate();
+    void                       restart();
 
     void                       enqueueUnlock();
+    void                       enqueueRestart();
     void                       enqueueFail(const std::string& failText, eAuthImplementations implType);
 
     void                       resetDisplayFail();

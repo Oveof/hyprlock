@@ -67,12 +67,26 @@ void CAuth::terminate() {
     }
 }
 
+void CAuth::restart() {
+    for (const auto& i : m_vImpls) {
+        i->restart();
+    }
+}
+
 static void unlockCallback(ASP<CTimer> self, void* data) {
     g_pHyprlock->fadeOutAndUnlock();
 }
 
 void CAuth::enqueueUnlock() {
     g_pHyprlock->addTimer(std::chrono::milliseconds(0), unlockCallback, nullptr);
+}
+
+static void restartCallback(ASP<CTimer> self, void* data) {
+    g_pAuth->restart();
+}
+
+void CAuth::enqueueRestart() {
+    g_pHyprlock->addTimer(std::chrono::milliseconds(0), restartCallback, nullptr);
 }
 
 static void passwordFailCallback(ASP<CTimer> self, void* data) {

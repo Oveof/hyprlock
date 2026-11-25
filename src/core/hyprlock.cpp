@@ -104,6 +104,13 @@ static void handleUnlockSignal(int sig) {
     }
 }
 
+static void handleRestartAuthSignal(int sig) {
+    if (sig == SIGRTMIN + 1) {
+        Log::logger->log(Log::INFO, "Restarting authentication with a SIGRTMIN+1");
+        g_pAuth->enqueueRestart();
+    }
+}
+
 static void handleForceUpdateSignal(int sig) {
     if (sig == SIGUSR2) {
         for (auto& t : g_pHyprlock->getTimers()) {
@@ -406,6 +413,7 @@ void CHyprlock::run() {
     registerSignalAction(SIGUSR1, handleUnlockSignal, SA_RESTART);
     registerSignalAction(SIGUSR2, handleForceUpdateSignal);
     registerSignalAction(SIGRTMIN, handlePollTerminate);
+    registerSignalAction(SIGRTMIN + 1, handleRestartAuthSignal, SA_RESTART);
 
     pollfd pollfds[2];
     pollfds[0] = {
